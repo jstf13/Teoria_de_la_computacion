@@ -24,9 +24,16 @@ lkup s ((x, y):mem)
     | otherwise = lkup s mem
 
 upd :: Memory -> (String, Value) -> Memory
-upd mem (x, v) = (x, v) : filter (\(y, _) -> y /= x) mem
+upd [] (a, b) = error "Variable no encontrada en la memoria"
+upd ((x, y):mem) (a, b) 
+    | x == a = ((a, b):mem)
+    | otherwise = (x, y) : upd mem (a, b)
 
 -- Funciones auxiliares
+myNot :: Bool -> Bool
+myNot True = False
+myNot False = True
+
 belongs :: Int -> [Int] -> Bool
 belongs _ [] = False
 belongs z (x:xs)
@@ -34,16 +41,32 @@ belongs z (x:xs)
     | otherwise = belongs z xs
 
 union :: [Int] -> [Int] -> [Int]
-union c1 c2 = c1 ++ filter (\x -> not (x `elem` c1)) c2
+union [] ls = ls
+union xs [] = xs
+union (x:xs) ls
+    | belongs x ls == True = union xs ls
+    | belongs x ls == False = union xs (x:ls)
 
 intersection :: [Int] -> [Int] -> [Int]
-intersection c1 c2 = filter (\x -> x `elem` c1) c2
+intersection [] ls = []
+intersection xs [] = xs
+intersection (x:xs) ls
+    | belongs x ls == True = x : intersection xs ls
+    | belongs x ls == False = intersection xs ls
 
 difference :: [Int] -> [Int] -> [Int]
-difference c1 c2 = filter (\x -> not (x `elem` c2)) c1
+difference [] _ = []
+difference xs [] = xs
+difference (x:xs) ys
+    | belongs x ys = difference xs ys
+    | otherwise = x : difference xs ys
 
 included :: [Int] -> [Int] -> Bool
-included c1 c2 = all (\x -> x `elem` c2) c1
+included [] _ = True
+included xs [] = False
+included (x:xs) ls
+    | belongs x ls == True = included xs ls
+    | belongs x ls == False = False
 
 -- Evaluación de expresiones
 -- eval :: Memory -> Exp -> (Memory, Value)
