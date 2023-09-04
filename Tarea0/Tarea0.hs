@@ -17,15 +17,21 @@ data Value = Set [Int]
 type Memory = [(String, Value)]
 
 -- Operaciones sobre la memoria
-lkup :: String -> Memory -> Maybe Value
-lkup x mem = lookup x mem
+lkup :: String -> Memory -> Value
+lkup _ [] = error "Variable no encontrada en la memoria"
+lkup s ((x, y):mem)
+    | s == x = y
+    | otherwise = lkup s mem
 
 upd :: Memory -> (String, Value) -> Memory
 upd mem (x, v) = (x, v) : filter (\(y, _) -> y /= x) mem
 
 -- Funciones auxiliares
 belongs :: Int -> [Int] -> Bool
-belongs z c = z `elem` c
+belongs _ [] = False
+belongs z (x:xs)
+    | x == z = True
+    | otherwise = belongs z xs
 
 union :: [Int] -> [Int] -> [Int]
 union c1 c2 = c1 ++ filter (\x -> not (x `elem` c1)) c2
@@ -40,45 +46,45 @@ included :: [Int] -> [Int] -> Bool
 included c1 c2 = all (\x -> x `elem` c2) c1
 
 -- Evaluación de expresiones
-eval :: Memory -> Exp -> (Memory, Value)
-eval mem (Var x) = case lkup x mem of
-    Just v -> (mem, v)
-    Nothing -> error "Variable no encontrada en la memoria"
-eval mem Empty = (mem, Set [])
-eval mem (Singleton n) = (mem, Set [n])
-eval mem (Member e1 e2) =
-    let (mem', v1) = eval mem e1
-        (mem'', v2) = eval mem' e2
-    in case (v1, v2) of
-        (Set c1, Set c2) -> (mem'', BoolValue (belongs (head c1) c2))
-        _ -> error "Tipos incorrectos en Member"
-eval mem (Union e1 e2) =
-    let (mem', v1) = eval mem e1
-        (mem'', v2) = eval mem' e2
-    in case (v1, v2) of
-        (Set c1, Set c2) -> (mem'', Set (union c1 c2))
-        _ -> error "Tipos incorrectos en Union"
-eval mem (Intersection e1 e2) =
-    let (mem', v1) = eval mem e1
-        (mem'', v2) = eval mem' e2
-    in case (v1, v2) of
-        (Set c1, Set c2) -> (mem'', Set (intersection c1 c2))
-        _ -> error "Tipos incorrectos en Intersection"
-eval mem (Difference e1 e2) =
-    let (mem', v1) = eval mem e1
-        (mem'', v2) = eval mem' e2
-    in case (v1, v2) of
-        (Set c1, Set c2) -> (mem'', Set (difference c1 c2))
-        _ -> error "Tipos incorrectos en Difference"
-eval mem (Subset e1 e2) =
-    let (mem', v1) = eval mem e1
-        (mem'', v2) = eval mem' e2
-    in case (v1, v2) of
-        (Set c1, Set c2) -> (mem'', BoolValue (included c1 c2))
-        _ -> error "Tipos incorrectos en Subset"
-eval mem (Assign x e) =
-    let (mem', v) = eval mem e
-    in (upd mem' (x, v), v)
+-- eval :: Memory -> Exp -> (Memory, Value)
+-- eval mem (Var x) = case lkup x mem of
+--     Just v -> (mem, v)
+--     Nothing -> error "Variable no encontrada en la memoria"
+-- eval mem Empty = (mem, Set [])
+-- eval mem (Singleton n) = (mem, Set [n])
+-- eval mem (Member e1 e2) =
+--     let (mem', v1) = eval mem e1
+--         (mem'', v2) = eval mem' e2
+--     in case (v1, v2) of
+--         (Set c1, Set c2) -> (mem'', BoolValue (belongs (head c1) c2))
+--         _ -> error "Tipos incorrectos en Member"
+-- eval mem (Union e1 e2) =
+--     let (mem', v1) = eval mem e1
+--         (mem'', v2) = eval mem' e2
+--     in case (v1, v2) of
+--         (Set c1, Set c2) -> (mem'', Set (union c1 c2))
+--         _ -> error "Tipos incorrectos en Union"
+-- eval mem (Intersection e1 e2) =
+--     let (mem', v1) = eval mem e1
+--         (mem'', v2) = eval mem' e2
+--     in case (v1, v2) of
+--         (Set c1, Set c2) -> (mem'', Set (intersection c1 c2))
+--         _ -> error "Tipos incorrectos en Intersection"
+-- eval mem (Difference e1 e2) =
+--     let (mem', v1) = eval mem e1
+--         (mem'', v2) = eval mem' e2
+--     in case (v1, v2) of
+--         (Set c1, Set c2) -> (mem'', Set (difference c1 c2))
+--         _ -> error "Tipos incorrectos en Difference"
+-- eval mem (Subset e1 e2) =
+--     let (mem', v1) = eval mem e1
+--         (mem'', v2) = eval mem' e2
+--     in case (v1, v2) of
+--         (Set c1, Set c2) -> (mem'', BoolValue (included c1 c2))
+--         _ -> error "Tipos incorrectos en Subset"
+-- eval mem (Assign x e) =
+--     let (mem', v) = eval mem e
+--     in (upd mem' (x, v), v)
 
 
 -- -- Expresiones de conjuntos
@@ -125,8 +131,17 @@ conj1 = Singleton 1 `Union` Singleton 2 `Union` Singleton 3
 -- ass4 = Assign "z" incl2
 
 -- Ejemplo de uso
-main :: IO ()
-main = do
-    let initialMem = []
-    let (finalMem, result) = eval initialMem conj1
-    putStrLn $ "Resultado: " ++ show result
+-- main :: IO ()
+-- main = do
+--     let initialMem = []
+--     let (finalMem, result) = eval initialMem conj1
+--     putStrLn $ "Resultado: " ++ show result
+
+
+-- Ejemplo de una memoria con variables definidas
+sampleMemory :: Memory
+sampleMemory = [
+    ("x", Set [1, 2, 3]),          -- Asignación de un conjunto
+    ("y", Set [2, 3, 4]),          -- Asignación de otro conjunto
+    ("z", BoolValue True)         -- Asignación de un valor booleano
+    ]
