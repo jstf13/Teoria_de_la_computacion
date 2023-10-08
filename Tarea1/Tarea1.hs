@@ -1,3 +1,4 @@
+-- Definición de tipos de datos según la sintaxis abstracta
 data Exp
   = Var String
   | Const String
@@ -7,105 +8,132 @@ data Exp
   | Rec String Exp
   deriving (Show, Eq)
 
-data Branch 
-  = Branch String String Exp 
+data Branch
+  = Branch String [String] Exp
   deriving (Show, Eq)
 
+-- Tipo para representar sustituciones
 type Substitution = [(String, Exp)]
 
--- lookupVar :: String -> Substitution -> Exp
--- lookupVar x sigma = fromMaybe (Var x) (lookup x sigma)
+-- Aplicar una sustitución a una expresión
+applySubstitution :: Substitution -> Exp -> Exp
+applySubstitution sigma (Var x) = case lkup x sigma of
+  Const c -> Const c
+  e -> e
+applySubstitution sigma (Lambda x e) = Lambda x (applySubstitution (filter (\(y, _) -> y /= x) sigma) e)
+applySubstitution sigma (App e1 e2) = App (applySubstitution sigma e1) (applySubstitution sigma e2)
+applySubstitution sigma (Case er branches) =
+  Case (applySubstitution sigma er) (map (\(Branch c xs e) -> Branch c xs (applySubstitution (removeVars xs sigma) e)) branches)
+applySubstitution sigma (Rec x e) = Rec x (applySubstitution (filter (\(y, _) -> y /= x) sigma) e)
+applySubstitution _ e = e
 
--- deleteVars :: [String] -> Substitution -> Substitution
--- deleteVars [] sigma = sigma
--- deleteVars (x:xs) sigma = deleteVars xs (filter (\(y, _) -> y /= x) sigma)
+-- Función auxiliar para buscar en una sustitución
+lkup :: String -> Substitution -> Exp
+lkup _ [] = error "Variable no encontrada en la sustitución"
+lkup x ((y, e) : sigma)
+  | x == y = e
+  | otherwise = lkup x sigma
 
-reduce :: Exp -> Maybe Exp
-reduce (App (Lambda x e1) e2) = Just (subst x e1 e2)
-reduce (Case (Const c) branches) = lookupBranch c branches
-reduce _ = Nothing
+-- Función auxiliar para eliminar variables de una sustitución
+removeVars :: [String] -> Substitution -> Substitution
+removeVars [] sigma = sigma
+removeVars (x : xs) sigma = removeVars xs (filter (\(y, _) -> y /= x) sigma)
 
-subst :: String -> Exp -> Exp -> Exp
-subst x e (Var y) | x == y = e
-subst x e (Lambda y body) = Lambda y (subst x e body)
-subst x e (App e1 e2) = App (subst x e e1) (subst x e e2)
-subst x e (Case exp y:ys) = Case (subst x e exp) (myMap (substBranch x e) (y:ys))
-subst x e (Rec y body) | x == y = Rec y body
-subst x e (Rec y body) = Rec y (subst x e body)
+-- Función de reducción (parcial)
+reduce :: Exp -> Exp
+reduce (App (Lambda x e1) e2) = applySubstitution [(x, e2)] e1
+-- Define las reglas de reducción aquí según la especificación
 
-myMap :: (a -> b) -> [a] -> [b]
-myMap _ [] = []
-myMap f (x:xs) = f x : myMap f xs
+-- -- Función de evaluación de expresiones
+-- evaluateExpression :: Exp -> Exp
+-- evaluateExpression exp =
+--   case reduce exp of
+--     exp' | exp' == exp -> exp' -- No se puede reducir más
+--     _ -> evaluateExpression exp'
 
-substBranch :: String -> Exp -> Branch -> Branch
-substBranch x e (Branch c y body) = Branch c y (subst x e body)
+-- -- Funciones embebidas en Haskell (χ embebido)
+-- and :: Exp
+-- and =
+--   Lambda "x" $
+--     Lambda "y" $
+--       Case (Var "x")
+--         [ Branch "True" [] (Var "y"),
+--           Branch "False" [] (Const "False")
+--         ]
 
-lookupBranch :: String -> [Branch] -> Maybe Exp
-lookupBranch _ [] = Nothing
-lookupBranch c (Branch c' x body : branches)
-  | c == c' = Just (subst x (Const c) body)
-  | otherwise = lookupBranch c branches
+-- duplicar :: Exp
+-- duplicar =
+--   Lambda "n" $
+--     App
+--       (App (Rec "+" (Var "x")) (Var "n"))
+--       (Var "n")
 
-eval :: Exp -> Exp
-eval exp = case reduce exp of
-  Just exp' -> eval exp'
-  Nothing -> exp
+-- unir :: Exp
+-- unir =
+--   Lambda "l1" $
+--     Lambda "l2" $
+--       Case (Var "l1")
+--         [ Branch "[]" [] (Var "l2"),
+--           Branch ":" ["x", "xs"] (Const ":")
+--         ]
 
-and :: Exp
-and = Lambda "x" (Lambda "y" (Case (Var "x") [Branch "True" "x" (Var "y"), Branch "False" "x" (Const "False")]))
+-- -- Pruebas
+-- main :: IO ()
+-- main = do
+--   let test1 = App (App and (Const "True")) (Const "False")
+--   let test2 = App (App duplicar (Const "3")) (Const "3")
+--   let test3 = App (App unir (Const "[1, 2]")) (Const "[3, 4]")
+--   let test4 = App (App unir (Const "[1, 2]")) (Const "False")
 
-duplicar :: Exp
-duplicar = Lambda "n" (Case (Var "n") [Branch "O" "_" (Const "O"), Branch "S" "n" (App (Const "S") (App (Const "S") (Var "n")))])
+--   putStrLn "Test 1 (and True False):"
+--   print (evaluateExpression test1)
 
-unir :: Exp
-unir = Lambda "l1" (Lambda "l2" (Case (Var "l1") [Branch "[]" "_" (Var "l2"), Branch ":" "x" (App (Const ":") (App (App unir (Var "xs")) (Var "l2")))]))
+--   putStrLn "Test 2 (duplicar 3 3):"
+--   print (evaluateExpression test2)
 
-ramaI :: Exp
-ramaI = Lambda "tree" (Case (Var "tree") [Branch "Leaf" "_" (Const "[]"), Branch "Node" "x" (App (Var "x") (App ramaI (Var "xs")))])
+--   putStrLn "Test 3 (unir [1, 2] [3, 4]):"
+--   print (evaluateExpression test3)
 
--- Define la función "and" en χ embebido en Haskell
-andFunction :: Exp
-andFunction = and
+--   putStrLn "Test 4 (unir [1, 2] False):"
+--   print (evaluateExpression test4)
 
--- Define la función "duplicar" en χ embebido en Haskell
-duplicarFunction :: Exp
-duplicarFunction = duplicar
 
--- Define la función "unir" en χ embebido en Haskell
-unirFunction :: Exp
-unirFunction = unir
+-- Definiciones de variables de ejemplo
+varX = Var "x"
+varY = Var "y"
+varZ = Var "z"
 
--- Define la función "ramaI" en χ embebido en Haskell
-ramaIFunction :: Exp
-ramaIFunction = ramaI
+constA = Const "A"
+constB = Const "B"
 
--- Prueba la función "unir" con una lista que contiene al 0 y al 1, y otra que tiene al 2 y al 3.
-pruebaUnir :: Exp
-pruebaUnir = App (App unirFunction (Const "0")) (Const "1")
+lambdaExp = Lambda "x" (App varX varX)
 
--- Prueba la función "ramaI" con un árbol binario de al menos 3 niveles en la rama izquierda.
-pruebaRamaI :: Exp
-pruebaRamaI = App ramaIFunction tree
-  where 
-    tree =
-      App
-        (App
-          (Const "Node")
-          (Lambda "x" (App (Var "x") (Var "xs"))))
-        (App
-          (App
-            (Const "Node")
-            (Lambda "x" (App (Var "x") (Var "xs"))))
-          (App
-            (App
-              (Const "Node")
-              (Lambda "x" (App (Var "x") (Var "xs"))))
-            (Const "Leaf")))
+branch1 = Branch "Branch1" ["x", "y"] (App varX varY)
+branch2 = Branch "Branch2" ["z"] (App varZ constA)
+branch3 = Branch "Branch3" [] constB
 
-main :: IO ()
-main = do
-  putStrLn "Resultado de la función 'unir' con [0, 1] y [2, 3]:"
-  print (eval pruebaUnir)
+substitution1 = [("x", constA), ("y", constB)]
+substitution2 = [("z", constB)]
 
-  putStrLn "\nResultado de la función 'ramaI' con árbol de prueba:"
-  print (eval pruebaRamaI)
+-- Ejemplo de expresión para reducir
+expressionToReduce = App (Lambda "x" (App varX varX)) constA
+
+-- Definición de una sustitución
+sigma = [("x", Const "5"), ("y", Var "z")]
+
+-- Ejemplo 1: Variable encontrada en la sustitución
+-- applySubstitution sigma (Var "x") -- Devuelve: Const "5"
+
+-- -- Ejemplo 2: Variable no encontrada en la sustitución
+-- applySubstitution sigma (Var "z") -- Devuelve: Var "z"
+
+-- -- Ejemplo 3: Aplicación de sustitución en una expresión más compleja
+-- applySubstitution sigma (App (Var "x") (Var "y")) -- Devuelve: App (Const "5") (Var "z")
+
+-- -- Ejemplo 4: Sustitución en una expresión lambda
+-- applySubstitution sigma (Lambda "x" (Var "x")) -- Devuelve: Lambda "x" (Var "x")
+
+-- -- Ejemplo 5: Sustitución en una expresión de caso (case)
+-- let branch = Branch "True" [] (Var "x")
+-- applySubstitution sigma (Case (Var "y") [branch]) -- Devuelve: Case (Var "y") [Branch "True" [] (Var "x")]
+
