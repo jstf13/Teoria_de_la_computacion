@@ -17,19 +17,17 @@ type Substitution = [(String, Exp)]
 
 -- Aplicar una sustitución a una expresión
 applySubstitution :: Substitution -> Exp -> Exp
-applySubstitution sigma (Var x) = case lkup x sigma of
-  Const c -> Const c
-  e -> e
-applySubstitution sigma (Lambda x e) = Lambda x (applySubstitution (filter (\(y, _) -> y /= x) sigma) e)
+applySubstitution sigma (Var x) = lkup x sigma 
+applySubstitution sigma (Lambda x e) = Lambda x (applySubstitution (removeVars [x] sigma) e)
 applySubstitution sigma (App e1 e2) = App (applySubstitution sigma e1) (applySubstitution sigma e2)
 applySubstitution sigma (Case er branches) =
   Case (applySubstitution sigma er) (map (\(Branch c xs e) -> Branch c xs (applySubstitution (removeVars xs sigma) e)) branches)
-applySubstitution sigma (Rec x e) = Rec x (applySubstitution (filter (\(y, _) -> y /= x) sigma) e)
+applySubstitution sigma (Rec x e) = Rec x (applySubstitution (removeVars [x] sigma) e)
 applySubstitution _ e = e
 
 -- Función auxiliar para buscar en una sustitución
 lkup :: String -> Substitution -> Exp
-lkup _ [] = error "Variable no encontrada en la sustitución"
+lkup x [] = Var x
 lkup x ((y, e) : sigma)
   | x == y = e
   | otherwise = lkup x sigma
@@ -37,71 +35,70 @@ lkup x ((y, e) : sigma)
 -- Función auxiliar para eliminar variables de una sustitución
 removeVars :: [String] -> Substitution -> Substitution
 removeVars [] sigma = sigma
-removeVars (x : xs) sigma = removeVars xs (filter (\(y, _) -> y /= x) sigma)
+removeVars (x : xs) sigma = case sigma of
+  ((y, e): rest) | x == y -> removeVars xs rest
+                 | otherwise -> (y, e) : removeVars xs rest
+  [] -> []
 
 -- Función de reducción (parcial)
 reduce :: Exp -> Exp
-reduce (App (Lambda x e1) e2) = applySubstitution [(x, e2)] e1
--- Define las reglas de reducción aquí según la especificación
+reduce (Var x) = Var x
+reduce (Const c) = Const c
+reduce (Lambda x e) = Lambda x (reduce e)
+reduce (App e1 e2) = case reduce e1 of
+  Lambda x e -> reduce (applySubstitution [(x, e2)] e)
+  otherwise -> App e1 e2
+reduce (Case er branches) = case reduce er of
+  Const c -> case findBranch c branches of
+    (Branch _ xs e) -> reduce (applySubstitution (zip xs (map Const (split c))) e)
+  otherwise -> Case er (map (\(Branch c xs e) -> Branch c xs (reduce e)) branches)
+reduce (Rec x e) = reduce (applySubstitution [(x, Rec x e)] e)
+
+-- Función auxiliar para encontrar una rama en un case
+findBranch :: String -> [Branch] -> Branch
+findBranch _ [] = error "No se encontró la rama"
+findBranch c ((Branch c' xs e) : branches)
+  | c == c' = (Branch c' xs e)
+  | otherwise = findBranch c branches
+
+-- Función auxiliar para separar una cadena
+split :: String -> [String]
+split [] = []
+split (x:xs) = [x] : split xs
 
 -- -- Función de evaluación de expresiones
--- evaluateExpression :: Exp -> Exp
--- evaluateExpression exp =
---   case reduce exp of
---     exp' | exp' == exp -> exp' -- No se puede reducir más
---     _ -> evaluateExpression exp'
+evaluateExpression :: Exp -> Exp
+evaluateExpression e = case reduce e of
+  e' | e' == e -> e
+     | otherwise -> evaluateExpression e'
 
--- -- Funciones embebidas en Haskell (χ embebido)
--- and :: Exp
--- and =
---   Lambda "x" $
---     Lambda "y" $
---       Case (Var "x")
---         [ Branch "True" [] (Var "y"),
---           Branch "False" [] (Const "False")
---         ]
 
--- duplicar :: Exp
--- duplicar =
---   Lambda "n" $
---     App
---       (App (Rec "+" (Var "x")) (Var "n"))
---       (Var "n")
+-- Funciones embebidas en Haskell (χ embebido)
+myAnd :: Exp
+myAnd = Lambda "x" (Lambda "y" (Case (Var "x") [Branch "True" [] (Var "y"), Branch "False" [] (Const "False")]))
 
--- unir :: Exp
--- unir =
---   Lambda "l1" $
---     Lambda "l2" $
---       Case (Var "l1")
---         [ Branch "[]" [] (Var "l2"),
---           Branch ":" ["x", "xs"] (Const ":")
---         ]
+duplicar :: Exp
+duplicar = App (Rec "duplicar" (Lambda "x" (Case (Var "x") [Branch "0" [] (Const "0"), Branch "n" ["n"] (App (App (Const "+") (Const "1")) (App (App (Var "duplicar") (Var "n")) (Var "n")))]))) (Var "x")
 
--- -- Pruebas
--- main :: IO ()
--- main = do
---   let test1 = App (App and (Const "True")) (Const "False")
---   let test2 = App (App duplicar (Const "3")) (Const "3")
---   let test3 = App (App unir (Const "[1, 2]")) (Const "[3, 4]")
---   let test4 = App (App unir (Const "[1, 2]")) (Const "False")
+unir :: Exp
+unir = App (Rec "unir" (Lambda "x" (Lambda "y" (Case (Var "x") [Branch "[]" [] (Var "y"), Branch "x" ["x"] (App (App (Const ":") (Var "x")) (App (App (Var "unir") (Var "x")) (Var "y")))])))) (Var "x")
 
---   putStrLn "Test 1 (and True False):"
---   print (evaluateExpression test1)
+-- ramaI: dado un  ́arbol binario, con informaci ́on en los nodos, y hojas
+-- sin informaci ́on, retorna una lista con todos los elementos de la rama
+-- izquierda
+ramaI :: Exp
+ramaI = App (Rec "ramaI" (Lambda "x" (Case (Var "x") [Branch "[]" [] (Const "[]"), Branch "x" ["x"] (App (App (Const ":") (App (App (Const "head") (Var "x")) (Const "[]"))) (App (App (Var "ramaI") (App (Const "tail") (Var "x"))) (Const "[]")))]))) (Var "x")
 
---   putStrLn "Test 2 (duplicar 3 3):"
---   print (evaluateExpression test2)
 
---   putStrLn "Test 3 (unir [1, 2] [3, 4]):"
---   print (evaluateExpression test3)
-
---   putStrLn "Test 4 (unir [1, 2] False):"
---   print (evaluateExpression test4)
 
 
 -- Definiciones de variables de ejemplo
 varX = Var "x"
 varY = Var "y"
 varZ = Var "z"
+
+listVar1 = ["x"]
+listVar2 = ["x", "y"]
 
 constA = Const "A"
 constB = Const "B"
@@ -137,3 +134,16 @@ sigma = [("x", Const "5"), ("y", Var "z")]
 -- let branch = Branch "True" [] (Var "x")
 -- applySubstitution sigma (Case (Var "y") [branch]) -- Devuelve: Case (Var "y") [Branch "True" [] (Var "x")]
 
+-- Ejemplos de expresiones de prueba
+expression1 = App (Lambda "x" (Var "x")) (Const "A")
+expression2 = App (Lambda "x" (App (Var "x") (Var "x"))) (Lambda "y" (Const "B"))
+
+
+main :: IO ()
+main = do
+  let result1 = evaluateExpression expression1
+  let result2 = evaluateExpression expression2
+  putStrLn "Resultado de expression1:"
+  print result1
+  putStrLn "Resultado de expression2:"
+  print result2
