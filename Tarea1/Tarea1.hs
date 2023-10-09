@@ -21,7 +21,7 @@ applySubstitution sigma (Var x) = lkup x sigma
 applySubstitution sigma (Lambda x e) = Lambda x (applySubstitution (removeVars [x] sigma) e)
 applySubstitution sigma (App e1 e2) = App (applySubstitution sigma e1) (applySubstitution sigma e2)
 applySubstitution sigma (Case er branches) =
-  Case (applySubstitution sigma er) (map (\(Branch c xs e) -> Branch c xs (applySubstitution (removeVars xs sigma) e)) branches)
+  Case (applySubstitution sigma er) (myMap (\(Branch c xs e) -> Branch c xs (applySubstitution (removeVars xs sigma) e)) branches)
 applySubstitution sigma (Rec x e) = Rec x (applySubstitution (removeVars [x] sigma) e)
 applySubstitution _ e = e
 
@@ -47,12 +47,14 @@ reduce (Const c) = Const c
 reduce (Lambda x e) = Lambda x (reduce e)
 reduce (App e1 e2) = case reduce e1 of
   Lambda x e -> reduce (applySubstitution [(x, e2)] e)
+  Rec f e -> reduce (applySubstitution [(f, Rec f e)] e)  -- Agregado para manejar funciones definidas con Rec
   otherwise -> App e1 e2
 reduce (Case er branches) = case reduce er of
   Const c -> case findBranch c branches of
-    (Branch _ xs e) -> reduce (applySubstitution (zip xs (map Const (split c))) e)
-  otherwise -> Case er (map (\(Branch c xs e) -> Branch c xs (reduce e)) branches)
+    (Branch _ xs e) -> reduce (applySubstitution (zip xs (myMap Const (split c))) e)
+  otherwise -> Case er (myMap (\(Branch c xs e) -> Branch c xs (reduce e)) branches)
 reduce (Rec x e) = reduce (applySubstitution [(x, Rec x e)] e)
+
 
 -- Función auxiliar para encontrar una rama en un case
 findBranch :: String -> [Branch] -> Branch
@@ -65,6 +67,12 @@ findBranch c ((Branch c' xs e) : branches)
 split :: String -> [String]
 split [] = []
 split (x:xs) = [x] : split xs
+
+-- Función auxiliar para mapear una función sobre una lista
+myMap :: (a -> b) -> [a] -> [b]
+myMap _ [] = []
+myMap f (x:xs) = f x : myMap f xs
+
 
 -- -- Función de evaluación de expresiones
 evaluateExpression :: Exp -> Exp
@@ -83,11 +91,9 @@ duplicar = App (Rec "duplicar" (Lambda "x" (Case (Var "x") [Branch "0" [] (Const
 unir :: Exp
 unir = App (Rec "unir" (Lambda "x" (Lambda "y" (Case (Var "x") [Branch "[]" [] (Var "y"), Branch "x" ["x"] (App (App (Const ":") (Var "x")) (App (App (Var "unir") (Var "x")) (Var "y")))])))) (Var "x")
 
--- ramaI: dado un  ́arbol binario, con informaci ́on en los nodos, y hojas
--- sin informaci ́on, retorna una lista con todos los elementos de la rama
--- izquierda
 ramaI :: Exp
 ramaI = App (Rec "ramaI" (Lambda "x" (Case (Var "x") [Branch "[]" [] (Const "[]"), Branch "x" ["x"] (App (App (Const ":") (App (App (Const "head") (Var "x")) (Const "[]"))) (App (App (Var "ramaI") (App (Const "tail") (Var "x"))) (Const "[]")))]))) (Var "x")
+
 
 
 
@@ -118,32 +124,16 @@ expressionToReduce = App (Lambda "x" (App varX varX)) constA
 -- Definición de una sustitución
 sigma = [("x", Const "5"), ("y", Var "z")]
 
--- Ejemplo 1: Variable encontrada en la sustitución
--- applySubstitution sigma (Var "x") -- Devuelve: Const "5"
-
--- -- Ejemplo 2: Variable no encontrada en la sustitución
--- applySubstitution sigma (Var "z") -- Devuelve: Var "z"
-
--- -- Ejemplo 3: Aplicación de sustitución en una expresión más compleja
--- applySubstitution sigma (App (Var "x") (Var "y")) -- Devuelve: App (Const "5") (Var "z")
-
--- -- Ejemplo 4: Sustitución en una expresión lambda
--- applySubstitution sigma (Lambda "x" (Var "x")) -- Devuelve: Lambda "x" (Var "x")
-
--- -- Ejemplo 5: Sustitución en una expresión de caso (case)
--- let branch = Branch "True" [] (Var "x")
--- applySubstitution sigma (Case (Var "y") [branch]) -- Devuelve: Case (Var "y") [Branch "True" [] (Var "x")]
-
 -- Ejemplos de expresiones de prueba
 expression1 = App (Lambda "x" (Var "x")) (Const "A")
 expression2 = App (Lambda "x" (App (Var "x") (Var "x"))) (Lambda "y" (Const "B"))
 
-
-main :: IO ()
-main = do
-  let result1 = evaluateExpression expression1
-  let result2 = evaluateExpression expression2
-  putStrLn "Resultado de expression1:"
-  print result1
-  putStrLn "Resultado de expression2:"
-  print result2
+-- Arbol binario
+arbolBinario :: Exp
+arbolBinario =
+  App
+    (App (Const "Node") (Const "1")) -- Nodo raíz
+    (App
+      (App (Const "Node") (Const "2")) -- Subárbol izquierdo
+      (App (App (Const "Node") (Const "3")) (Const "4")) -- Subárbol derecho
+    )
